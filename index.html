@@ -1,0 +1,816 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>装订台 THE BINDERY — 多文件文本合并工具</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;900&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#E7E0D0;
+    --paper:#F5F1E8;
+    --paper-2:#EDE7D9;
+    --paper-3:#E5DECB;
+    --ink:#221D15;
+    --ink-2:#5C5546;
+    --ink-3:#948B77;
+    --line:#D3CBB8;
+    --line-2:#C3B9A0;
+    --red:#B5371F;
+    --serif:'Noto Serif SC','Songti SC','SimSun',serif;
+    --mono:'IBM Plex Mono','SFMono-Regular',Consolas,monospace;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    background:var(--bg);
+    color:var(--ink);
+    font-family:var(--serif);
+    padding:32px 20px 72px;
+    -webkit-font-smoothing:antialiased;
+  }
+  /* 全局纸张噪点 */
+  body::after{
+    content:'';position:fixed;inset:0;z-index:9500;pointer-events:none;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.05 0'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-size:300px 300px;
+  }
+
+  /* ============ 主纸张（工单） ============ */
+  .sheet{
+    max-width:1280px;margin:0 auto;background:var(--paper);
+    border:1px solid #2b261d;position:relative;
+    box-shadow:0 1px 0 rgba(0,0,0,.05),0 26px 60px -34px rgba(58,48,28,.45);
+    padding:40px 52px 36px;
+  }
+
+  /* ============ 刊头 ============ */
+  .mast-meta{
+    display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px 18px;
+    font:500 11px/1 var(--mono);letter-spacing:.14em;color:var(--ink-2);
+    padding-bottom:12px;border-bottom:1px solid var(--ink);
+  }
+  .mast-meta em{font-style:normal;color:var(--red)}
+  .mast-main{
+    display:flex;align-items:flex-end;gap:36px;
+    padding:28px 0 24px;border-bottom:1px solid var(--ink);position:relative;
+  }
+  .mast-main::after{content:'';position:absolute;left:0;right:0;bottom:-4px;border-bottom:1px solid var(--ink)}
+  h1{
+    font-size:clamp(52px,6.5vw,84px);font-weight:900;line-height:.95;
+    letter-spacing:.06em;display:flex;align-items:flex-start;gap:16px;
+  }
+  h1 .seal-dot{
+    width:15px;height:15px;background:var(--red);flex:none;
+    transform:rotate(9deg) translateY(6px);
+  }
+  .mast-desc{margin-left:auto;text-align:right;max-width:420px;padding-bottom:6px}
+  .mast-desc .en{
+    display:block;font:600 12px var(--mono);letter-spacing:.38em;
+    color:var(--red);margin-bottom:10px;
+  }
+  .mast-desc p{font-size:13.5px;line-height:2;color:var(--ink-2)}
+
+  /* ============ 工作区 ============ */
+  .workbench{display:grid;grid-template-columns:5fr 7fr}
+  .col{min-width:0}
+  .col-left{padding:30px 40px 44px 0;border-right:1px solid var(--line-2)}
+  .col-right{padding:30px 0 44px 40px}
+
+  .sec-title{
+    display:flex;align-items:baseline;gap:10px;
+    border-bottom:2px solid var(--ink);padding-bottom:9px;margin-bottom:14px;
+  }
+  .sec-title b{font-size:16px;font-weight:900;letter-spacing:.12em}
+  .sec-title .en{font:500 10px var(--mono);letter-spacing:.2em;color:var(--ink-3)}
+  .sec-title .tools{margin-left:auto;display:flex;gap:16px}
+  .text-btn{
+    font:500 11px var(--mono);letter-spacing:.08em;color:var(--ink-2);
+    background:none;border:none;cursor:pointer;
+    border-bottom:1px solid transparent;padding-bottom:1px;
+  }
+  .text-btn:hover{color:var(--red);border-color:var(--red)}
+
+  .list-hint{font:400 10.5px/1.8 var(--mono);color:var(--ink-3);letter-spacing:.04em;padding:2px 0 10px}
+
+  /* ============ 上传区 ============ */
+  .dz{
+    border:1.5px dashed var(--line-2);padding:46px 20px;text-align:center;
+    cursor:pointer;transition:border-color .2s,background .2s;
+  }
+  .dz:hover,.dz.hot{border-color:var(--red);background:rgba(181,55,31,.035)}
+  .dz svg{width:52px;height:52px;color:var(--ink-2);margin-bottom:14px;animation:floaty 5s ease-in-out infinite}
+  @keyframes floaty{0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}
+  .dz .t1{font-size:14.5px;font-weight:600;margin-bottom:6px}
+  .dz .t2{font:400 11px var(--mono);color:var(--ink-3);letter-spacing:.05em}
+  .addmore{
+    display:none;align-items:center;justify-content:center;gap:9px;
+    border:1px dashed var(--line-2);padding:12px;cursor:pointer;
+    font-size:12.5px;color:var(--ink-2);margin-bottom:14px;transition:.2s;
+  }
+  .addmore:hover{border-color:var(--red);color:var(--red)}
+  .addmore svg{width:13px;height:13px}
+
+  /* ============ 稿件列表 ============ */
+  ol{list-style:none}
+  .item{border-bottom:1px solid var(--line);position:relative}
+  .item.dragging{opacity:.35}
+  .item.mk-above::before,.item.mk-below::after{
+    content:'';position:absolute;left:0;right:0;height:2px;background:var(--red);z-index:2;
+  }
+  .item.mk-above::before{top:-1px}
+  .item.mk-below::after{bottom:-1px}
+  .row{
+    display:flex;align-items:center;gap:12px;padding:12px 4px;cursor:pointer;
+    user-select:none;
+  }
+  .row .no{
+    font:600 12px var(--mono);color:var(--red);width:30px;flex:none;
+    text-align:right;padding-right:2px;
+  }
+  .row .meta{min-width:0;flex:1}
+  .row .name{
+    display:block;font:600 13px var(--mono);letter-spacing:.02em;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  .row .sub{display:block;font:400 10.5px var(--mono);color:var(--ink-3);margin-top:3px;letter-spacing:.04em}
+  .chev{width:11px;height:11px;color:var(--ink-3);flex:none;transition:transform .28s}
+  .item.open .chev{transform:rotate(180deg);color:var(--red)}
+  .ops{display:flex;gap:2px;opacity:0;transition:opacity .18s;flex:none}
+  .row:hover .ops{opacity:1}
+  @media(hover:none){.ops{opacity:1}}
+  .op{
+    width:27px;height:27px;display:grid;place-items:center;
+    border:1px solid transparent;background:none;cursor:pointer;color:var(--ink-2);
+    transition:.15s;
+  }
+  .op svg{width:13px;height:13px}
+  .op:hover{border-color:var(--ink);color:var(--ink)}
+  .op.del:hover{border-color:var(--red);color:var(--red)}
+  .peek{display:grid;grid-template-rows:0fr;transition:grid-template-rows .32s cubic-bezier(.4,0,.2,1)}
+  .item.open .peek{grid-template-rows:1fr}
+  .peek>div{overflow:hidden}
+  .peek pre{
+    margin:0 0 14px 42px;padding:11px 16px;background:var(--paper-2);
+    border-left:2px solid var(--red);
+    font:400 11px/1.8 var(--mono);white-space:pre;overflow-x:auto;color:var(--ink-2);
+  }
+
+  /* ============ 装订规格 ============ */
+  .specs{margin-top:30px}
+  .spec-group{padding:15px 0;border-bottom:1px solid var(--line)}
+  .spec-label{display:block;font:600 11px var(--mono);letter-spacing:.16em;color:var(--ink-2);margin-bottom:11px}
+  .opt{display:flex;gap:11px;padding:8px 10px;cursor:pointer;align-items:flex-start;border:1px solid transparent;transition:.15s;margin:0 -10px}
+  .opt:hover{background:var(--paper-2)}
+  .opt:has(input:checked){border-color:var(--red);background:#F8F4E9}
+  .opt input{position:absolute;opacity:0;pointer-events:none}
+  .box{
+    width:14px;height:14px;border:1.5px solid var(--ink);flex:none;
+    margin-top:3px;position:relative;background:var(--paper);
+  }
+  .opt input:checked+.box::after{content:'';position:absolute;inset:2.5px;background:var(--red)}
+  .opt-t b{font-size:13px;font-weight:600;display:block}
+  .opt-t code{font:400 11px var(--mono);color:var(--ink-3);display:block;margin-top:3px;letter-spacing:.02em}
+  .custom-input{
+    display:block;margin-top:8px;font:400 12px var(--mono);
+    border:none;border-bottom:1px solid var(--line-2);background:transparent;
+    padding:5px 2px;width:92%;outline:none;color:var(--ink);
+  }
+  .custom-input:focus{border-color:var(--red)}
+  .seg{display:inline-flex;border:1px solid var(--ink)}
+  .seg button{
+    width:46px;padding:9px 0;font:500 12px var(--mono);background:transparent;
+    border:none;border-right:1px solid var(--ink);cursor:pointer;color:var(--ink);transition:.15s;
+  }
+  .seg button:last-child{border-right:none}
+  .seg button:not(.cur):hover{background:var(--paper-2)}
+  .seg button.cur{background:var(--ink);color:var(--paper)}
+  .spec-note{font:400 10.5px var(--mono);color:var(--ink-3);margin-top:9px;letter-spacing:.03em}
+  .u-input{
+    width:100%;font:500 12.5px var(--mono);background:transparent;color:var(--ink);
+    border:none;border-bottom:1px solid var(--line-2);padding:6px 2px;outline:none;
+  }
+  .u-input:focus{border-color:var(--red)}
+  .check{display:flex;gap:11px;align-items:center;padding:18px 0 4px;cursor:pointer;font-size:13px}
+  .check input{position:absolute;opacity:0;pointer-events:none}
+  .cbox{
+    width:14px;height:14px;border:1.5px solid var(--ink);flex:none;position:relative;background:var(--paper);
+  }
+  .check input:checked+.cbox::after{
+    content:'';position:absolute;left:2px;top:3px;width:8px;height:4px;
+    border-left:2px solid var(--red);border-bottom:2px solid var(--red);
+    transform:rotate(-45deg);
+  }
+
+  /* ============ 装订成品（预览） ============ */
+  .pv-shell{border:1px solid var(--ink);background:var(--paper-2);position:relative;overflow:hidden}
+  .pv-shell.shake{animation:shk .34s .3s}
+  @keyframes shk{
+    0%,100%{transform:translate(0,0)}
+    25%{transform:translate(2px,1px)}
+    50%{transform:translate(-2px,-1px)}
+    75%{transform:translate(1px,1px)}
+  }
+  .pv-scroll{
+    height:clamp(380px,56vh,680px);overflow:auto;
+    padding:16px 0 18px;font:400 12.5px/1.9 var(--mono);color:#2A2418;
+  }
+  .pv-line{display:flex}
+  .pv-line:hover{background:rgba(34,29,21,.04)}
+  .pv-no{
+    position:sticky;left:0;flex:none;width:52px;text-align:right;padding-right:16px;
+    color:#B3A88D;background:var(--paper-2);user-select:none;
+  }
+  .pv-line:hover .pv-no{background:#E7E0CF}
+  .pv-code{white-space:pre;padding-right:28px;min-height:1em}
+  .pv-code.sep{color:var(--red);font-weight:600}
+  .pv-more{
+    padding:16px 20px 4px 68px;font:400 11px var(--mono);color:var(--ink-3);letter-spacing:.04em;
+  }
+  .pv-empty{
+    height:clamp(380px,56vh,680px);display:grid;place-items:center;text-align:center;
+  }
+  .pv-empty svg{width:96px;height:96px;color:#BDB297;margin-bottom:18px}
+  .pv-empty .e1{font-size:15px;font-weight:600;letter-spacing:.3em;margin-bottom:8px}
+  .pv-empty .e2{font:400 11px var(--mono);color:var(--ink-3);letter-spacing:.06em}
+
+  /* 印章 */
+  .stamp{
+    position:absolute;top:30px;right:26px;width:140px;height:140px;
+    pointer-events:none;opacity:0;z-index:5;mix-blend-mode:multiply;
+  }
+  .stamp.on{animation:slam .62s cubic-bezier(.2,1.35,.4,1) forwards}
+  @keyframes slam{
+    0%{opacity:0;transform:scale(2.6) rotate(-35deg)}
+    55%{opacity:1;transform:scale(.92) rotate(-10deg)}
+    72%{transform:scale(1.05) rotate(-13deg)}
+    100%{opacity:.94;transform:scale(1) rotate(-12deg)}
+  }
+
+  /* 统计与操作 */
+  .stats{
+    display:flex;flex-wrap:wrap;gap:8px 24px;padding:13px 2px 0;
+    font:400 12px var(--mono);color:var(--ink-2);letter-spacing:.03em;
+  }
+  .stats b{color:var(--red);font-weight:600;margin-left:3px}
+  .stats .st-mode{margin-left:auto;color:var(--ink-3)}
+  .actions{display:flex;gap:16px;margin-top:16px}
+  .btn{
+    font-family:var(--serif);cursor:pointer;border:1px solid var(--ink);
+    display:flex;align-items:center;justify-content:center;gap:13px;
+    transition:transform .16s,box-shadow .16s,background .16s;
+  }
+  .btn svg{width:15px;height:15px;flex:none}
+  .btn .zh{letter-spacing:.22em}
+  .btn .en{font:500 9.5px var(--mono);letter-spacing:.2em;padding-left:13px;border-left:1px solid rgba(34,29,21,.22)}
+  .btn-main{
+    flex:1.5;background:var(--ink);color:var(--paper);
+    padding:16px 18px;box-shadow:4px 4px 0 var(--red);
+  }
+  .btn-main .zh{font-size:16px;font-weight:900}
+  .btn-main .en{color:#B9AF97;border-color:rgba(245,241,232,.25)}
+  .btn-main:hover:not(:disabled){transform:translate(-2px,-2px);box-shadow:7px 7px 0 var(--red)}
+  .btn-main:active:not(:disabled){transform:translate(2px,2px);box-shadow:1px 1px 0 var(--red)}
+  .btn-main:disabled{background:#8a8271;border-color:#8a8271;box-shadow:4px 4px 0 #c9c0aa;cursor:not-allowed}
+  .btn-ghost{
+    flex:1;background:transparent;color:var(--ink);padding:16px 14px;box-shadow:4px 4px 0 var(--line-2);
+  }
+  .btn-ghost .zh{font-size:14px;font-weight:600}
+  .btn-ghost .en{color:var(--ink-3)}
+  .btn-ghost:hover{background:var(--paper-2);box-shadow:4px 4px 0 var(--red)}
+  .btn-ghost:active{transform:translate(2px,2px);box-shadow:1px 1px 0 var(--red)}
+
+  /* ============ 页脚 ============ */
+  .foot{
+    border-top:1px solid var(--ink);margin-top:6px;padding-top:15px;
+    display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px 24px;
+    font:400 10.5px/1.9 var(--mono);color:var(--ink-3);letter-spacing:.05em;
+  }
+
+  /* ============ 拖入遮罩 ============ */
+  .drop-ov{
+    position:fixed;inset:0;z-index:9000;display:none;place-items:center;
+    background:rgba(245,241,232,.9);backdrop-filter:blur(4px);
+  }
+  .drop-ov.on{display:grid}
+  .drop-ov .frame{border:2px dashed var(--red);padding:56px 88px;text-align:center}
+  .drop-ov svg{width:52px;height:52px;color:var(--red);margin-bottom:16px}
+  .drop-ov b{display:block;font-size:20px;font-weight:900;letter-spacing:.3em;margin-bottom:10px}
+  .drop-ov span{font:500 11px var(--mono);letter-spacing:.3em;color:var(--ink-2)}
+
+  /* ============ Toast ============ */
+  #toasts{
+    position:fixed;bottom:28px;left:50%;transform:translateX(-50%);
+    display:flex;flex-direction:column;align-items:center;gap:10px;z-index:10000;
+  }
+  .toast{
+    background:var(--ink);color:var(--paper);padding:11px 18px;
+    border-left:3px solid var(--red);font-size:13px;letter-spacing:.03em;
+    display:flex;align-items:center;gap:16px;
+    box-shadow:4px 4px 0 rgba(34,29,21,.18);animation:tin .28s cubic-bezier(.2,.9,.3,1.2);
+    max-width:min(88vw,560px);
+  }
+  .toast.out{opacity:0;transform:translateY(8px);transition:.25s}
+  .t-undo{
+    font:600 11px var(--mono);letter-spacing:.1em;background:var(--red);color:var(--paper);
+    border:none;padding:5px 12px;cursor:pointer;flex:none;
+  }
+  .t-undo:hover{background:#98290F}
+  @keyframes tin{from{opacity:0;transform:translateY(14px)}}
+
+  /* ============ 响应式 ============ */
+  @media(max-width:960px){
+    .sheet{padding:26px 20px}
+    .workbench{grid-template-columns:1fr}
+    .col-left{border-right:none;border-bottom:1px solid var(--line-2);padding:24px 0 30px}
+    .col-right{padding:24px 0 30px}
+    .mast-main{flex-direction:column;align-items:flex-start;gap:18px}
+    .mast-desc{margin-left:0;text-align:left;max-width:none}
+    .drop-ov .frame{padding:40px 24px}
+  }
+</style>
+</head>
+<body>
+
+<div class="sheet">
+
+  <!-- 刊头 -->
+  <header>
+    <div class="mast-meta">
+      <span>文本整理科 · 第壹号工具 <em>/ VOL.01</em></span>
+      <span>全程本地运行 LOCAL ONLY · <span id="today"></span></span>
+    </div>
+    <div class="mast-main">
+      <h1>装订台<span class="seal-dot"></span></h1>
+      <div class="mast-desc">
+        <span class="en">THE BINDERY</span>
+        <p>把散落的 .txt / .html / .js 稿件，一键装订成一份完整文本——排序、分隔、合并、复制、下载，一站完成。</p>
+      </div>
+    </div>
+  </header>
+
+  <main class="workbench">
+
+    <!-- 左栏：稿件与规格 -->
+    <section class="col col-left">
+      <div class="sec-title">
+        <b>待装稿件</b><span class="en">MANUSCRIPTS</span>
+        <span class="tools"><button class="text-btn" id="btnClear" hidden>清空稿件</button></span>
+      </div>
+      <p class="list-hint" id="listHint" hidden>
+      <!-- 空态上传区 -->
+      <div class="dz" id="dz">
+        <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round">
+          <path d="M15 7h19v27H15z"/>
+          <path d="M10 14h19v27H10z"/>
+          <path d="M15.5 21h8M15.5 26h11M15.5 31h6"/>
+        </svg>
+        <p class="t1">将稿件拖入此处，或点击选择文件</p>
+        <p class="t2">支持多选 · .txt / .html / .js / .css / .json / .md …</p>
+      </div>
+
+      <!-- 有文件时的追加条 -->
+      <div class="addmore" id="addMore">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 6v12M6 12h12"/></svg>
+        继续添加稿件（拖入或点击）
+      </div>
+
+      <ol id="fileList"></ol>
+
+      <!-- 装订规格 -->
+      <section class="specs">
+        <div class="sec-title"><b>装订规格</b><span class="en">SPECIFICATIONS</span></div>
+
+        <div class="spec-group">
+          <label class="spec-label">段间分隔</label>
+          <label class="opt"><input type="radio" name="sep" value="none"><span class="box"></span>
+            <span class="opt-t"><b>无缝拼接</b><code>…上篇结尾紧接下篇开头…</code></span></label>
+          <label class="opt"><input type="radio" name="sep" value="line"><span class="box"></span>
+            <span class="opt-t"><b>单行分隔线</b><code>────────────────────────</code></span></label>
+          <label class="opt"><input type="radio" name="sep" value="name" checked><span class="box"></span>
+            <span class="opt-t"><b>文件名标记</b><code>/* ── app.js ── */ · &lt;!-- ── a.html ── --&gt;</code></span></label>
+          <label class="opt"><input type="radio" name="sep" value="custom"><span class="box"></span>
+            <span class="opt-t"><b>自定义分隔</b>
+              <input class="custom-input" id="customSep" placeholder="════ 我的分隔线 ════" maxlength="120">
+            </span></label>
+        </div>
+
+        <div class="spec-group">
+          <label class="spec-label">段间空行</label>
+          <div class="seg" id="segBlank">
+            <button type="button" data-n="0">0</button><button type="button" data-n="1" class="cur">1</button><button type="button" data-n="2">2</button><button type="button" data-n="3">3</button>
+          </div>
+          <p class="spec-note">每两篇稿件之间插入的空行数</p>
+        </div>
+
+        <div class="spec-group">
+          <label class="spec-label">输出文件名</label>
+          <input class="u-input" id="outName" spellcheck="false">
+        </div>
+
+        <label class="check"><input type="checkbox" id="trim" checked><span class="cbox"></span>去除每篇稿件首尾的空行</label>
+      </section>
+    </section>
+
+    <!-- 右栏：成品预览 -->
+    <section class="col col-right">
+      <div class="sec-title"><b>装订成品</b><span class="en">THE BOUND VOLUME</span></div>
+
+      <div class="pv-shell" id="pvShell">
+        <div class="pv-scroll" id="pvScroll"></div>
+        <!-- 印章 -->
+        <div class="stamp" id="stamp">
+          <svg viewBox="0 0 200 200" width="100%" height="100%">
+            <defs>
+              <path id="ringP" d="M 100,100 m -60,0 a 60,60 0 1,1 120,0 a 60,60 0 1,1 -120,0"/>
+              <filter id="roughF" x="-8%" y="-8%" width="116%" height="116%">
+                <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="1" result="n"/>
+                <feDisplacementMap in="SourceGraphic" in2="n" scale="2.8"/>
+              </filter>
+            </defs>
+            <g filter="url(#roughF)" opacity=".93">
+              <circle cx="100" cy="100" r="88" fill="none" stroke="#B5371F" stroke-width="5"/>
+              <circle cx="100" cy="100" r="76" fill="none" stroke="#B5371F" stroke-width="1.6"/>
+              <text font-size="12.5" fill="#B5371F" letter-spacing="3" font-family="'IBM Plex Mono',monospace">
+                <textPath href="#ringP">BINDERY · 已装订 · MERGE COMPLETE ·</textPath>
+              </text>
+              <text x="103" y="110" text-anchor="middle" font-size="40" font-weight="900" fill="#B5371F" font-family="'Noto Serif SC',serif" letter-spacing="5">装讫</text>
+              <text class="st-date" x="100" y="140" text-anchor="middle" font-size="11" fill="#B5371F" letter-spacing="1" font-family="'IBM Plex Mono',monospace"></text>
+            </g>
+          </svg>
+        </div>
+      </div>
+
+      <div class="stats" id="stats"></div>
+
+      <div class="actions">
+        <button class="btn btn-main" id="btnMerge" disabled>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="1"/><path d="M5 15V5a1 1 0 0 1 1-1h10"/></svg>
+          <span class="zh">合并装订</span><span class="en">MERGE · COPY</span>
+        </button>
+        <button class="btn btn-ghost" id="btnDownload">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11m0 0l-4-4m4 4l4-4"/><path d="M5 19.5h14"/></svg>
+          <span class="zh">下载成册</span><span class="en">DOWNLOAD</span>
+        </button>
+      </div>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <span>THE BINDERY · 装订台 — 文本整理科 第壹号工具</span>
+    <span>所有读写均在本页内存完成，刷新即散，请及时下载成册</span>
+  </footer>
+</div>
+
+<!-- 全屏拖入遮罩 -->
+<div class="drop-ov" id="dropOv">
+  <div class="frame">
+    <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round">
+      <path d="M15 7h19v27H15z"/><path d="M10 14h19v27H10z"/><path d="M15.5 21h8M15.5 26h11M15.5 31h6"/>
+    </svg>
+    <b>松手，放入稿件</b>
+    <span>DROP FILES TO BIND</span>
+  </div>
+</div>
+
+<div id="toasts"></div>
+<input type="file" id="fileInput" multiple hidden
+  accept=".txt,.text,.html,.htm,.js,.mjs,.cjs,.css,.scss,.json,.md,.markdown,.ts,.tsx,.jsx,.xml,.svg,.yml,.yaml,.csv,.py,.sh,.java,.c,.cpp,.h,.log,.ini,.conf,.toml,.vue">
+
+<script>
+(function(){
+  'use strict';
+  const $ = s => document.querySelector(s);
+
+  /* ---------- 状态 ---------- */
+  const state = { files: [], sep: 'name', custom: '', blanks: 1, trim: true };
+  const expanded = new Set();
+  let uid = 0, dragging = null, currentText = '', currentStats = {f:0,l:0,c:0};
+  const PREVIEW_MAX = 1500;
+  const SEP_NAMES = { none:'无缝拼接', line:'单行分隔线', name:'文件名标记', custom:'自定义分隔' };
+
+  /* ---------- 图标 ---------- */
+  const I = {
+    up:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 14.5l6-6 6 6"/></svg>',
+    down:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9.5l6 6 6-6"/></svg>',
+    x:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>',
+    chev:'<svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9.5l6 6 6-6"/></svg>'
+  };
+
+  /* ---------- 工具函数 ---------- */
+  const esc  = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const fmt  = n => n.toLocaleString('en-US');
+  const pad  = n => String(n).padStart(2,'0');
+  const extOf = n => { const m = /\.([a-z0-9]+)$/i.exec(n); return m ? m[1].toLowerCase() : ''; };
+  const fmtSize = b => b < 1024 ? b + ' B' : b < 1048576 ? (b/1024).toFixed(1) + ' KB' : (b/1048576).toFixed(2) + ' MB';
+  const hasFiles = e => e.dataTransfer && [...e.dataTransfer.types].includes('Files');
+  const readText = f => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsText(f); });
+
+  /* ---------- 分隔行生成 ---------- */
+  function sepLineFor(f){
+    if (state.sep === 'line')   return '─'.repeat(48);
+    if (state.sep === 'custom') return state.custom.trim() || '═'.repeat(24);
+    const label = `── ${f.name} ──`;
+    const e = f.ext;
+    if (['js','mjs','cjs','ts','jsx','tsx','css','scss','less','json','java','c','cpp','h'].includes(e)) return `/* ${label} */`;
+    if (['html','htm','xml','svg','vue'].includes(e)) return `<!-- ${label} -->`;
+    if (['py','rb','sh','bash','yml','yaml','toml','conf','ini','env'].includes(e)) return `# ${label}`;
+    return label;
+  }
+
+  /* ---------- 合并核心 ---------- */
+  function buildMerged(){
+    const out = [];
+    const push = (t, s) => String(t).split('\n').forEach(l => out.push({t:l, s:!!s}));
+    state.files.forEach((f, i) => {
+      if (i > 0){
+        for (let k = 0; k < state.blanks; k++) out.push({t:'', s:false});
+        if (state.sep !== 'none') push(sepLineFor(f), true);
+      }
+      let body = f.text;
+      if (state.trim) body = body.replace(/^\n+/, '').replace(/\n+$/, '');
+      push(body, false);
+    });
+    return out;
+  }
+
+  /* ---------- 渲染：稿件列表 ---------- */
+  function renderList(){
+    const has = state.files.length > 0;
+    $('#dz').style.display        = has ? 'none' : '';
+    $('#addMore').style.display   = has ? 'flex' : 'none';
+    $('#listHint').hidden          = !has;
+    $('#btnClear').hidden          = !has;
+
+    $('#fileList').innerHTML = state.files.map((f, i) => {
+      const lines = f.text ? f.text.split('\n').length : 0;
+      const ls = f.text.split('\n');
+      const peek = (ls.length > 14 ? ls.slice(0,14).join('\n') + '\n… 其余 ' + (ls.length-14) + ' 行' : ls.join('\n')) || '（空稿件）';
+      return `<li class="item${expanded.has(f.id) ? ' open' : ''}" draggable="true" data-id="${f.id}">
+        <div class="row" data-act="toggle">
+          <span class="no">${pad(i+1)}</span>
+          <div class="meta">
+            <span class="name" title="${esc(f.name)}">${esc(f.name)}</span>
+            <span class="sub">${(f.ext || 'txt').toUpperCase()} · ${lines} 行 · ${fmtSize(f.size)}</span>
+          </div>
+          ${I.chev.replace('<svg','<svg class="chev"')}
+          <div class="ops">
+            <button class="op" data-act="up"   title="上移" aria-label="上移">${I.up}</button>
+            <button class="op" data-act="down" title="下移" aria-label="下移">${I.down}</button>
+            <button class="op del" data-act="del" title="移除" aria-label="移除">${I.x}</button>
+          </div>
+        </div>
+        <div class="peek"><div><pre>${esc(peek)}</pre></div></div>
+      </li>`;
+    }).join('');
+  }
+
+  /* ---------- 渲染：成品预览 ---------- */
+  function renderPreview(){
+    removeStamp();
+    const box = $('#pvScroll');
+    if (!state.files.length){
+      currentText = ''; currentStats = {f:0, l:0, c:0};
+      box.innerHTML = `<div class="pv-empty"><div>
+        <svg viewBox="0 0 120 120" fill="none" stroke="currentColor">
+          <circle cx="60" cy="60" r="52" stroke-width="1.5" stroke-dasharray="5 6"/>
+          <text x="60" y="73" text-anchor="middle" font-size="36" font-weight="900" fill="currentColor" stroke="none" font-family="'Noto Serif SC',serif">空</text>
+        </svg>
+        <p class="e1">虚位以待</p>
+        <p class="e2">添加稿件后，成品将在此装订成形</p>
+      </div></div>`;
+      renderStats(); return;
+    }
+    const lines = buildMerged();
+    currentText = lines.map(l => l.t).join('\n');
+    currentStats = { f: state.files.length, l: lines.length, c: currentText.length };
+
+    let html = lines.slice(0, PREVIEW_MAX).map((l, i) =>
+      `<div class="pv-line"><span class="pv-no">${i+1}</span><span class="pv-code${l.s ? ' sep' : ''}">${l.t === '' ? '&nbsp;' : esc(l.t)}</span></div>`
+    ).join('');
+    if (lines.length > PREVIEW_MAX)
+      html += `<div class="pv-more">—— 预览截至第 ${fmt(PREVIEW_MAX)} 行 · 复制与下载的内容是完整的 ——</div>`;
+    box.innerHTML = html;
+    renderStats();
+  }
+
+  function renderStats(){
+    $('#stats').innerHTML =
+      `<span>稿件<b>${currentStats.f}</b>篇</span>` +
+      `<span>行数<b>${fmt(currentStats.l)}</b></span>` +
+      `<span>字符<b>${fmt(currentStats.c)}</b></span>` +
+      `<span class="st-mode">分隔：${SEP_NAMES[state.sep]}</span>`;
+  }
+
+  function render(){ renderList(); renderPreview(); $('#btnMerge').disabled = !state.files.length; }
+
+  /* ---------- 印章 ---------- */
+  function dateStr(){
+    const d = new Date();
+    return `${d.getFullYear()}·${pad(d.getMonth()+1)}·${pad(d.getDate())}`;
+  }
+  function removeStamp(){ $('#stamp').classList.remove('on'); }
+  function slam(){
+    const st = $('#stamp');
+    st.querySelector('.st-date').textContent = dateStr();
+    st.classList.remove('on'); void st.offsetWidth;
+    st.classList.add('on');
+    const sh = $('#pvShell');
+    sh.classList.remove('shake'); void sh.offsetWidth;
+    sh.classList.add('shake');
+  }
+
+  /* ---------- Toast（支持撤销） ---------- */
+  function toast(msg, undo){
+    const box = $('#toasts');
+    while (box.children.length >= 3) box.firstChild.remove();
+    const t = document.createElement('div');
+    t.className = 'toast';
+    t.innerHTML = `<span>${esc(msg)}</span>` + (undo ? '<button class="t-undo">撤销</button>' : '');
+    box.appendChild(t);
+    const kill = () => { t.classList.add('out'); setTimeout(() => t.remove(), 260); };
+    if (undo) t.querySelector('.t-undo').onclick = () => { undo(); kill(); };
+    setTimeout(kill, 4200);
+  }
+
+  /* ---------- 文件添加 ---------- */
+  async function addFiles(fileList){
+    const arr = [...fileList];
+    if (!arr.length) return;
+    let added = 0; const skipped = [];
+    for (const file of arr){
+      try{
+        const text = await readText(file);
+        if (/[\u0000\uFFFD]/.test(text.slice(0, 3000))){ skipped.push(file.name); continue; }
+        state.files.push({
+          id: ++uid, name: file.name, ext: extOf(file.name),
+          size: file.size, text: text.replace(/\r\n?/g, '\n')
+        });
+        added++;
+      }catch(e){ skipped.push(file.name); }
+    }
+    render();
+    if (added) toast(`已收入 ${added} 篇稿件`);
+    if (skipped.length) toast(`跳过 ${skipped.length} 个疑似非文本文件：${skipped.join('、')}`);
+  }
+
+  /* ---------- 列表操作 ---------- */
+  function moveFile(id, d){
+    const i = state.files.findIndex(f => f.id === id), j = i + d;
+    if (i < 0 || j < 0 || j >= state.files.length) return;
+    [state.files[i], state.files[j]] = [state.files[j], state.files[i]];
+    render();
+  }
+  function removeFile(id){
+    const i = state.files.findIndex(f => f.id === id);
+    if (i < 0) return;
+    const [f] = state.files.splice(i, 1);
+    expanded.delete(id); render();
+    toast(`已移除「${f.name}」`, () => {
+      state.files.splice(Math.min(i, state.files.length), 0, f); render();
+    });
+  }
+
+  $('#fileList').addEventListener('click', e => {
+    const li = e.target.closest('.item'); if (!li) return;
+    const actEl = e.target.closest('[data-act]'); if (!actEl) return;
+    const id = +li.dataset.id, act = actEl.dataset.act;
+    if (act === 'toggle'){ expanded.has(id) ? expanded.delete(id) : expanded.add(id); li.classList.toggle('open'); }
+    else if (act === 'up')   moveFile(id, -1);
+    else if (act === 'down') moveFile(id,  1);
+    else if (act === 'del')  removeFile(id);
+  });
+
+  /* ---------- 拖拽排序（列表内） ---------- */
+  const clearMarks = () => document.querySelectorAll('.mk-above,.mk-below').forEach(el => el.classList.remove('mk-above','mk-below'));
+
+  $('#fileList').addEventListener('dragstart', e => {
+    const li = e.target.closest('.item'); if (!li) return;
+    dragging = +li.dataset.id;
+    li.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', String(dragging));
+  });
+  $('#fileList').addEventListener('dragover', e => {
+    if (dragging === null || hasFiles(e)) return;
+    e.preventDefault();
+    clearMarks();
+    const li = e.target.closest('.item');
+    if (!li || +li.dataset.id === dragging) return;
+    const r = li.getBoundingClientRect();
+    li.classList.add(e.clientY > r.top + r.height/2 ? 'mk-below' : 'mk-above');
+  });
+  $('#fileList').addEventListener('drop', e => {
+    if (dragging === null || hasFiles(e)) return;
+    e.preventDefault(); e.stopPropagation();
+    const from = state.files.findIndex(f => f.id === dragging);
+    if (from < 0){ dragging = null; clearMarks(); return; }
+    const li = e.target.closest('.item');
+    const [it] = state.files.splice(from, 1);
+    if (!li){
+      state.files.push(it);                       // 拖到列表空白 → 移到末尾
+    } else {
+      const tid = +li.dataset.id;
+      if (tid !== dragging){
+        let to = state.files.findIndex(f => f.id === tid);
+        const r = li.getBoundingClientRect();
+        const below = e.clientY > r.top + r.height/2;
+        if (to > from) to--;
+        state.files.splice(below ? to + 1 : to, 0, it);
+      } else state.files.splice(from, 0, it);
+    }
+    dragging = null; clearMarks(); render();
+  });
+  document.addEventListener('dragend', () => {
+    dragging = null; clearMarks();
+    document.querySelectorAll('.item.dragging').forEach(el => el.classList.remove('dragging'));
+  });
+
+  /* ---------- 外部文件拖入（全页） ---------- */
+  let depth = 0;
+  document.addEventListener('dragenter', e => { if (!hasFiles(e)) return; depth++; $('#dropOv').classList.add('on'); });
+  document.addEventListener('dragleave', e => { if (!hasFiles(e)) return; if (--depth <= 0){ depth = 0; $('#dropOv').classList.remove('on'); } });
+  document.addEventListener('dragover',  e => { if (hasFiles(e)) e.preventDefault(); });
+  document.addEventListener('drop', e => {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    depth = 0; $('#dropOv').classList.remove('on');
+    addFiles(e.dataTransfer.files);
+  });
+
+  /* ---------- 选择文件 ---------- */
+  const input = $('#fileInput');
+  $('#dz').addEventListener('click', () => input.click());
+  $('#addMore').addEventListener('click', () => input.click());
+  input.addEventListener('change', () => { addFiles(input.files); input.value = ''; });
+
+  /* ---------- 清空 ---------- */
+  $('#btnClear').addEventListener('click', () => {
+    if (!state.files.length) return;
+    const bak = state.files.slice(), n = bak.length;
+    state.files = []; expanded.clear(); render();
+    toast(`已清空 ${n} 篇稿件`, () => { state.files = bak; render(); });
+  });
+
+  /* ---------- 规格控件 ---------- */
+  document.querySelectorAll('input[name=sep]').forEach(r =>
+    r.addEventListener('change', () => { state.sep = r.value; render(); }));
+
+  let deb = null;
+  $('#customSep').addEventListener('input', e => {
+    state.custom = e.target.value;
+    clearTimeout(deb);
+    deb = setTimeout(() => { if (state.sep === 'custom') render(); }, 160);
+  });
+
+  $('#segBlank').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    state.blanks = +b.dataset.n;
+    document.querySelectorAll('#segBlank button').forEach(x => x.classList.toggle('cur', x === b));
+    render();
+  });
+
+  $('#trim').addEventListener('change', e => { state.trim = e.target.checked; render(); });
+
+  /* ---------- 复制 / 下载 ---------- */
+  async function copyText(t){
+    try { await navigator.clipboard.writeText(t); return true; }
+    catch(e){
+      const ta = document.createElement('textarea');
+      ta.value = t; ta.style.cssText = 'position:fixed;opacity:0;top:0';
+      document.body.appendChild(ta); ta.select();
+      const ok = document.execCommand('copy'); ta.remove(); return ok;
+    }
+  }
+
+  $('#btnMerge').addEventListener('click', async () => {
+    if (!state.files.length){ toast('稿件箱是空的，先添加几篇稿件'); return; }
+    const ok = await copyText(currentText);
+    if (!ok){ toast('复制失败——请改用「下载成册」'); return; }
+    slam();
+    toast(`已装订并复制全文 · ${fmt(currentStats.c)} 字符`);
+  });
+
+  $('#btnDownload').addEventListener('click', () => {
+    if (!state.files.length){ toast('还没有可下载的成品'); return; }
+    let name = $('#outName').value.trim() || `装订成册_${dateStr().replace(/·/g,'')}.txt`;
+    if (!/\.[a-z0-9]+$/i.test(name)) name += '.txt';
+    const blob = new Blob([currentText], { type: 'text/plain;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    toast(`已下载「${name}」`);
+  });
+
+  /* ---------- 初始化 ---------- */
+  const d = new Date();
+  $('#today').textContent = `${d.getFullYear()} 年 ${d.getMonth()+1} 月 ${d.getDate()} 日`;
+  $('#outName').value = `装订成册_${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}.txt`;
+  render();
+})();
+</script>
+</body>
+</html>
