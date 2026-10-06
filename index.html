@@ -1,0 +1,778 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TXT 无缝合并器 · 纯本地运行</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⧉</text></svg>">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --ink: #1f2333; --muted: #6b7280; --line: #e5e7f0;
+    --brand: #4f46e5; --brand-soft: #eef0fe;
+    --ok: #059669; --warn: #d97706; --err: #dc2626;
+  }
+  [hidden] { display: none !important; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+                 "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    background:
+      radial-gradient(1200px 600px at 85% -10%, #e6e3ff 0%, transparent 60%),
+      radial-gradient(900px 500px at -10% 25%, #dff3ee 0%, transparent 55%),
+      #f4f5fa;
+    color: var(--ink); min-height: 100vh; padding: 28px 0 40px;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 20px; }
+
+  /* ---------- 头部 ---------- */
+  .hero {
+    display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
+    padding: 26px 30px; border-radius: 20px; color: #fff;
+    background: linear-gradient(120deg, #4f46e5, #7c3aed 55%, #9333ea);
+    box-shadow: 0 12px 30px rgba(79, 70, 229, .25);
+  }
+  .hero-icon {
+    width: 56px; height: 56px; border-radius: 16px; flex-shrink: 0;
+    background: rgba(255,255,255,.16); border: 1px solid rgba(255,255,255,.25);
+    display: flex; align-items: center; justify-content: center; font-size: 30px;
+  }
+  .hero h1 { font-size: 24px; letter-spacing: .5px; }
+  .hero p { margin-top: 6px; font-size: 13px; opacity: .85; }
+  .hero-badges { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
+  .hero-badges span {
+    font-size: 12px; padding: 5px 10px; border-radius: 999px;
+    background: rgba(255,255,255,.14); border: 1px solid rgba(255,255,255,.22);
+  }
+
+  /* ---------- 布局 ---------- */
+  .layout { display: grid; grid-template-columns: minmax(0,1fr) 360px; gap: 18px;
+            margin-top: 18px; align-items: start; }
+  @media (max-width: 940px) { .layout { grid-template-columns: 1fr; } }
+
+  /* ---------- 拖放区 ---------- */
+  .dropzone {
+    border: 2px dashed #c3c8e8; border-radius: 16px; background: #fff;
+    padding: 34px 20px; text-align: center; cursor: pointer; transition: .2s;
+  }
+  .dropzone:hover { border-color: var(--brand); background: #fbfbff; }
+  .dz-icon { font-size: 30px; color: var(--brand); }
+  .dz-main { font-size: 15px; font-weight: 600; margin-top: 8px; }
+  .dz-sub { font-size: 13px; color: var(--muted); margin-top: 6px; }
+  .linklike { background: none; border: none; color: var(--brand); font-size: 13px;
+              cursor: pointer; text-decoration: underline; padding: 0; font-family: inherit; }
+
+  /* ---------- 工具栏与文件列表 ---------- */
+  .toolbar { display: flex; align-items: center; gap: 8px; margin: 14px 2px 8px; font-size: 13px; }
+  .toolbar .muted { color: var(--muted); }
+  .spacer { flex: 1; }
+  .ghost {
+    background: #fff; border: 1px solid var(--line); border-radius: 9px;
+    padding: 6px 12px; font-size: 12.5px; cursor: pointer; color: var(--ink);
+    font-family: inherit; transition: .15s;
+  }
+  .ghost:hover { border-color: var(--brand); color: var(--brand); }
+  .file-list {
+    list-style: none; background: #fff; border: 1px solid var(--line);
+    border-radius: 14px; max-height: 460px; overflow-y: auto;
+  }
+  .placeholder { padding: 30px; text-align: center; color: var(--muted); font-size: 13px; }
+  .file {
+    display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+    border-bottom: 1px solid var(--line); cursor: grab; background: #fff; transition: background .15s;
+  }
+  .file:last-child { border-bottom: none; }
+  .file:hover { background: #f8f8ff; }
+  .file.dragging { opacity: .5; border: 1.5px dashed var(--brand);
+                   border-radius: 10px; background: var(--brand-soft); }
+  .file.dim { opacity: .55; }
+  .grip { color: #b6bccf; font-size: 15px; user-select: none; }
+  .idx {
+    font-family: ui-monospace, Consolas, monospace; font-size: 12px; font-weight: 600;
+    color: var(--brand); background: var(--brand-soft); border-radius: 6px; padding: 2px 7px;
+  }
+  .finfo { flex: 1; min-width: 0; }
+  .fname { font-size: 13.5px; font-weight: 600; white-space: nowrap;
+           overflow: hidden; text-overflow: ellipsis; }
+  .file.bad .fname { color: var(--err); }
+  .fmeta { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+  .fmeta .err { color: var(--err); font-weight: 600; }
+  .fmeta .warn { color: var(--warn); }
+  .fops { display: flex; gap: 4px; }
+  .fops button {
+    width: 26px; height: 26px; border: 1px solid var(--line); background: #fff;
+    border-radius: 7px; cursor: pointer; font-size: 12px; color: var(--muted); font-family: inherit;
+  }
+  .fops button:hover:not(:disabled) { border-color: var(--brand); color: var(--brand); }
+  .fops button:disabled { opacity: .3; cursor: default; }
+  .fops .del:hover { border-color: var(--err); color: var(--err); }
+  .tip { font-size: 12px; color: var(--muted); margin-top: 8px; line-height: 1.7; }
+
+  /* ---------- 右侧设置面板 ---------- */
+  .panel { background: #fff; border: 1px solid var(--line); border-radius: 14px;
+           padding: 16px; margin-bottom: 14px; }
+  .panel h2 { font-size: 12px; color: var(--muted); font-weight: 600;
+              letter-spacing: 1px; text-transform: uppercase; margin-bottom: 10px; }
+  .opt { display: block; margin-bottom: 8px; }
+  .opt input { display: none; }
+  .opt span { display: block; border: 1.5px solid var(--line); border-radius: 11px;
+              padding: 10px 12px; cursor: pointer; transition: .15s; }
+  .opt span b { font-size: 13.5px; display: block; }
+  .opt span small { color: var(--muted); font-size: 11.5px; display: block;
+                    margin-top: 2px; line-height: 1.5; }
+  .opt input:checked + span { border-color: var(--brand); background: var(--brand-soft); }
+  .opt input:checked + span b { color: var(--brand); }
+  .field { margin-bottom: 12px; }
+  .field > label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+  .seg { display: flex; background: #eef0f6; border-radius: 9px; padding: 3px; gap: 3px; }
+  .seg label { flex: 1; }
+  .seg input { display: none; }
+  .seg span {
+    display: block; text-align: center; font-size: 12.5px; padding: 6px 4px;
+    border-radius: 7px; cursor: pointer; color: var(--muted);
+    font-family: ui-monospace, Consolas, monospace; transition: .15s;
+  }
+  .seg input:checked + span { background: #fff; color: var(--brand);
+    font-weight: 700; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+  select, input[type="text"] {
+    width: 100%; border: 1px solid var(--line); border-radius: 9px; padding: 8px 10px;
+    font-size: 13px; font-family: inherit; background: #fff; color: var(--ink);
+  }
+  select:focus, input[type="text"]:focus { outline: none; border-color: var(--brand); }
+  .dimmed { opacity: .45; pointer-events: none; }
+
+  .primary {
+    width: 100%; border: none; border-radius: 12px; padding: 13px; font-size: 15px;
+    font-weight: 700; color: #fff; cursor: pointer; font-family: inherit;
+    background: linear-gradient(120deg, #4f46e5, #7c3aed);
+    box-shadow: 0 8px 20px rgba(79,70,229,.3); transition: .15s; margin-bottom: 14px;
+  }
+  .primary:hover { transform: translateY(-1px); box-shadow: 0 10px 24px rgba(79,70,229,.38); }
+  .primary:active { transform: none; }
+
+  /* ---------- 结果区 ---------- */
+  .result h3 { font-size: 12.5px; color: var(--muted); letter-spacing: 1px;
+               text-transform: uppercase; margin: 14px 0 6px; font-weight: 600; }
+  .result h3 .jxcount { color: var(--brand); text-transform: none; }
+  .stats { font-size: 13px; line-height: 1.8; }
+  .stats b { color: var(--brand); }
+  .warnline { font-size: 12px; color: var(--warn); line-height: 1.7; margin-top: 4px; }
+  .jxs { border: 1px solid var(--line); border-radius: 10px; max-height: 180px;
+         overflow-y: auto; background: #fafaff; }
+  .jx { display: flex; align-items: center; gap: 8px; padding: 7px 10px;
+        border-bottom: 1px solid var(--line); font-size: 11.5px;
+        font-family: ui-monospace, Consolas, monospace; }
+  .jx:last-child { border-bottom: none; }
+  .jx .pair { color: var(--brand); font-weight: 700; flex-shrink: 0; }
+  .jx .txt { white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+             flex: 1; min-width: 0; }
+  .jx .txt.l { text-align: right; }
+  .jx .arrow { color: var(--brand); flex-shrink: 0; }
+  .dim { color: var(--muted); font-size: 12px; padding: 10px; text-align: center; }
+  details.preview { margin-top: 10px; }
+  details.preview summary { font-size: 12.5px; color: var(--brand); cursor: pointer; user-select: none; }
+  details.preview pre {
+    margin-top: 8px; background: #1f2333; color: #e6e9f5; border-radius: 10px;
+    padding: 12px; font-size: 11.5px; line-height: 1.7; max-height: 200px; overflow: auto;
+    white-space: pre-wrap; word-break: break-all;
+    font-family: ui-monospace, Consolas, "Courier New", monospace;
+  }
+  .row { display: flex; gap: 8px; margin-top: 12px; }
+  .row .primary { width: auto; margin: 0; flex: 1; }
+  .row .ghost { flex-shrink: 0; padding: 0 14px; }
+
+  footer { margin-top: 22px; text-align: center; font-size: 12px;
+           color: var(--muted); line-height: 1.8; }
+
+  /* ---------- 全屏拖放遮罩 / 提示条 ---------- */
+  .overlay {
+    position: fixed; inset: 0; z-index: 60; display: flex; align-items: center;
+    justify-content: center; background: rgba(79,70,229,.14);
+    backdrop-filter: blur(2px); opacity: 0; pointer-events: none; transition: .2s;
+  }
+  .overlay.on { opacity: 1; }
+  .overlay > div {
+    border: 2px dashed var(--brand); background: rgba(255,255,255,.92);
+    color: var(--brand); font-size: 16px; font-weight: 700;
+    padding: 40px 70px; border-radius: 20px;
+  }
+  #toasts {
+    position: fixed; top: 18px; left: 50%; transform: translateX(-50%); z-index: 100;
+    display: flex; flex-direction: column; gap: 8px; align-items: center; pointer-events: none;
+  }
+  .toast {
+    background: #1f2333; color: #fff; font-size: 13px; padding: 9px 16px;
+    border-radius: 999px; box-shadow: 0 8px 24px rgba(0,0,0,.18);
+    opacity: 0; transform: translateY(-8px); transition: .25s;
+  }
+  .toast.show { opacity: 1; transform: none; }
+  .toast.ok { background: #0e7a5f; }
+  .toast.warn { background: #b45309; }
+  .toast.err { background: #b91c1c; }
+
+  .file-list::-webkit-scrollbar, .jxs::-webkit-scrollbar, details pre::-webkit-scrollbar { width: 8px; }
+  .file-list::-webkit-scrollbar-thumb, .jxs::-webkit-scrollbar-thumb,
+  details pre::-webkit-scrollbar-thumb { background: #c9cde4; border-radius: 4px; }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <header class="hero">
+    <div class="hero-icon">⧉</div>
+    <div>
+      <h1>TXT 无缝合并器</h1>
+      <p>多个 TXT 拼成一份，接缝处恰好一个换行 —— 不粘连、不多空行</p>
+    </div>
+    <div class="hero-badges">
+      <span>🔒 纯本地处理</span><span>⚡ 自动识别编码</span><span>↕️ 拖拽排序</span>
+    </div>
+  </header>
+
+  <div class="layout">
+    <!-- 左侧：文件区 -->
+    <section>
+      <div class="dropzone" id="dropzone">
+        <div class="dz-icon">⬇</div>
+        <div class="dz-main">把 TXT 文件或整个文件夹拖到页面任意位置</div>
+        <div class="dz-sub">或
+          <button class="linklike" id="pickFiles">选择文件</button> ·
+          <button class="linklike" id="pickDir">选择文件夹</button>
+        </div>
+      </div>
+
+      <div class="toolbar">
+        <span class="muted" id="fileCount">暂无文件</span>
+        <span class="spacer"></span>
+        <button class="ghost" id="sortNat">↕ 自然排序</button>
+        <button class="ghost" id="clearAll">🗑 清空</button>
+      </div>
+      <ul class="file-list" id="fileList"></ul>
+      <p class="tip">提示：拖动列表项可调整合并顺序（也可用 ↑↓ 按钮）；文件名建议 01.txt、02.txt…（自然排序已保证 2 排在 10 前面）。</p>
+    </section>
+
+    <!-- 右侧：设置与结果 -->
+    <aside>
+      <div class="panel">
+        <h2>拼接方式</h2>
+        <label class="opt"><input type="radio" name="sep" value="seamless" checked>
+          <span><b>无缝拼接</b><small>修剪每个文件首尾空行，接缝处恰好一个换行</small></span></label>
+        <label class="opt"><input type="radio" name="sep" value="blank">
+          <span><b>空行分隔</b><small>文件之间保留一个空行，便于分章阅读</small></span></label>
+        <label class="opt"><input type="radio" name="sep" value="strict">
+          <span><b>字节原样</b><small>原始字节直接连接，不做任何处理（要求编码一致）</small></span></label>
+      </div>
+
+      <div class="panel" id="fmtPanel">
+        <h2>编码与输出</h2>
+        <div class="field"><label>读取编码（解码输入文件）</label>
+          <select id="encSel">
+            <option value="auto">自动检测（推荐）</option>
+            <option value="utf-8">UTF-8</option>
+            <option value="gb18030">GBK / GB2312</option>
+            <option value="big5">BIG5</option>
+            <option value="utf-16le">UTF-16 LE</option>
+            <option value="utf-16be">UTF-16 BE</option>
+          </select>
+        </div>
+        <div class="field"><label>输出换行符</label>
+          <div class="seg">
+            <label><input type="radio" name="eol" value="lf" checked><span>LF · \n</span></label>
+            <label><input type="radio" name="eol" value="crlf"><span>CRLF · \r\n</span></label>
+          </div>
+        </div>
+        <div class="field"><label>输出编码</label>
+          <div class="seg">
+            <label><input type="radio" name="oenc" value="utf8" checked><span>UTF-8</span></label>
+            <label><input type="radio" name="oenc" value="bom"><span>UTF-8 + BOM</span></label>
+          </div>
+        </div>
+        <div class="field" style="margin-bottom:0"><label>输出文件名</label>
+          <input type="text" id="outName" value="合并结果.txt" spellcheck="false">
+        </div>
+      </div>
+
+      <button class="primary" id="mergeBtn">⚙ 开始合并</button>
+
+      <div class="panel result" id="result" hidden>
+        <div class="stats" id="resStats"></div>
+        <div id="resWarn"></div>
+        <h3>接缝检查 <span class="jxcount" id="jxCount"></span></h3>
+        <div class="jxs" id="junctions"></div>
+        <details class="preview" id="previewBox">
+          <summary>预览合并文本开头（前 1200 字）</summary>
+          <pre id="preview"></pre>
+        </details>
+        <div class="row">
+          <button class="primary" id="downloadBtn">⬇ 下载合并文件</button>
+          <button class="ghost" id="copyBtn">复制全文</button>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <footer>
+    所有处理均在你的浏览器内完成，文件不会上传到任何服务器。<br>
+    自动识别 UTF-8 / GBK / BIG5 / UTF-16（含 BOM），统一换行符，自然排序。建议使用 Chrome / Edge。
+  </footer>
+</div>
+
+<div class="overlay" id="overlay"><div>松开鼠标，添加文件</div></div>
+<div id="toasts"></div>
+<input type="file" id="fileInput" multiple accept=".txt,text/plain" hidden>
+<input type="file" id="dirInput" webkitdirectory multiple hidden>
+
+<script>
+'use strict';
+const $ = s => document.querySelector(s);
+let uid = 0, dragIdx = -1, dragDepth = 0, lastResult = null;
+const files = [];      // {id, key, name, size, buf, text, enc, err}
+const seen = new Set();
+
+/* ================= 工具函数 ================= */
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+function fmtSize(n) {
+  if (n < 1024) return n + ' B';
+  if (n < 1048576) return (n / 1024).toFixed(1) + ' KB';
+  return (n / 1048576).toFixed(2) + ' MB';
+}
+function clip(s, n) { s = s == null ? '' : String(s); return s.length > n ? s.slice(0, n) : s; }
+function encName(e) {
+  return ({ 'utf-8': 'UTF-8', 'gb18030': 'GBK', 'big5': 'BIG5',
+            'utf-16le': 'UTF-16LE', 'utf-16be': 'UTF-16BE' })[e] || e;
+}
+function natCmp(a, b) {          // 自然排序：2.txt < 10.txt
+  a = String(a); b = String(b);
+  const pa = a.split(/(\d+)/), pb = b.split(/(\d+)/);
+  const n = Math.max(pa.length, pb.length);
+  for (let i = 0; i < n; i++) {
+    const x = pa[i], y = pb[i];
+    if (x === undefined) return -1;
+    if (y === undefined) return 1;
+    if (x === y) continue;
+    if (/^\d+$/.test(x) && /^\d+$/ == y.test('')) {}
+    if (/^\d+$/.test(x) && /^\d+$/.test(y)) {
+      const d = +x - +y;
+      if (d) return d;
+      return x.length - y.length || (x < y ? -1 : 1);
+    }
+    const lx = x.toLowerCase(), ly = y.toLowerCase();
+    if (lx === ly) continue;
+    return lx < ly ? -1 : 1;
+  }
+  return 0;
+}
+function toast(msg, type) {
+  const t = document.createElement('div');
+  t.className = 'toast' + (type ? ' ' + type : '');
+  t.textContent = msg;
+  $('#toasts').appendChild(t);
+  requestAnimationFrame(() => t.classList.add('show'));
+  setTimeout(() => { t.classList.remove('show'); setTimeout(() => t.remove(), 300); }, 2600);
+}
+
+/* ================= 编码识别与解码 ================= */
+function safeDec(u8, label, fatal) {
+  try { return new TextDecoder(label, { fatal: fatal !== false }).decode(u8); }
+  catch (e) { return null; }
+}
+function autoDetect(u8) {
+  const bom = (...bytes) => bytes.every((b, k) => u8[k] === b);
+  if (bom(0xEF, 0xBB, 0xBF)) {
+    const t = safeDec(u8.subarray(3), 'utf-8');
+    if (t !== null) return { enc: 'utf-8', text: t };
+  }
+  if (bom(0xFF, 0xFE)) {
+    const t = safeDec(u8.subarray(2), 'utf-16le');
+    if (t !== null) return { enc: 'utf-16le', text: t };
+  }
+  if (bom(0xFE, 0xFF)) {
+    const t = safeDec(u8.subarray(2), 'utf-16be');
+    if (t !== null) return { enc: 'utf-16be', text: t };
+  }
+  for (const label of ['utf-8', 'gb18030', 'big5']) {   // 严格解码，能通过即认为匹配
+    const t = safeDec(u8, label);
+    if (t !== null && t.indexOf('\u0000') === -1) return { enc: label, text: t };
+  }
+  const tl = safeDec(u8, 'utf-16le');                   // 无 BOM 的 UTF-16 兜底
+  if (tl !== null && tl.indexOf('\u0000') === -1) return { enc: 'utf-16le', text: tl };
+  const tb = safeDec(u8, 'utf-16be');
+  if (tb !== null) return { enc: 'utf-16be', text: tb };
+  return null;
+}
+function decodeItem(f) {
+  const forced = $('#encSel').value;
+  const u8 = new Uint8Array(f.buf);
+  if (forced !== 'auto') {
+    const t = safeDec(u8, forced, false);
+    if (t === null) { f.err = '浏览器不支持该编码'; f.text = null; f.enc = null; }
+    else { f.enc = forced; f.text = t; f.err = null; }
+    return;
+  }
+  const res = autoDetect(u8);
+  if (!res) { f.err = '无法识别编码'; f.text = null; f.enc = null; }
+  else { f.enc = res.enc; f.text = res.text; f.err = null; }
+}
+
+/* ================= 添加 / 读取文件 ================= */
+async function addFiles(picked) {
+  if (!picked || !picked.length) return;
+  let ignored = 0, dupes = 0;
+  const batch = [];
+  for (const f of picked) {
+    const fromFolder = !!(f._relPath || f.webkitRelativePath);
+    const name = f._relPath || f.webkitRelativePath || f.name;
+    if (fromFolder && !/\.txt$/i.test(name)) { ignored++; continue; }   // 文件夹模式只收 .txt
+    const key = name + '|' + f.size + '|' + f.lastModified;
+    if (seen.has(key)) { dupes++; continue; }
+    seen.add(key);
+    const item = { id: ++uid, key, name, size: f.size,
+                   buf: null, text: null, enc: null, err: null };
+    files.push(item);
+    batch.push([item, f]);
+  }
+  render(); clearResult();
+  await Promise.all(batch.map(async ([it, f]) => {
+    try { it.buf = await f.arrayBuffer(); decodeItem(it); }
+    catch (e) { it.err = '读取失败'; }
+  }));
+  render();
+  if (ignored) toast('已忽略 ' + ignored + ' 个非 .txt 文件');
+  if (dupes) toast('已跳过 ' + dupes + ' 个重复文件');
+  if (batch.length) toast('已添加 ' + batch.length + ' 个文件', 'ok');
+}
+
+/* 文件夹递归遍历（拖入文件夹时） */
+async function collectEntry(entry, prefix, out) {
+  if (!entry || entry.name.startsWith('.')) return;
+  if (entry.isFile) {
+    await new Promise(res => {
+      entry.file(f => { f._relPath = prefix + entry.name; out.push(f); res(); }, res);
+    });
+  } else if (entry.isDirectory) {
+    const reader = entry.createReader();
+    const all = await new Promise(res => {
+      const acc = [];
+      const step = () => reader.readEntries(ents => {
+        if (!ents || !ents.length) return res(acc);
+        for (const en of ents) acc.push(en);
+        step();
+      }, () => res(acc));
+      step();
+    });
+    all.sort((a, b) => natCmp(a.name, b.name));
+    for (const en of all) await collectEntry(en, prefix + entry.name + '/', out);
+  }
+}
+
+/* ================= 渲染 ================= */
+function metaLine(f) {
+  if (f.err) return '<span class="err">' + escapeHtml(f.err) + '</span>';
+  if (f.text === null) return '读取中…';
+  const nl = f.text ? (f.text.match(/\n/g) || []).length + 1 : 0;
+  let s = encName(f.enc) + ' · ' + fmtSize(f.size) + ' · ' + nl + ' 行';
+  if (f.text && !f.text.replace(/\s/g, '')) s += ' · <span class="warn">空文件·将跳过</span>';
+  return s;
+}
+function render() {
+  const listEl = $('#fileList');
+  const total = files.reduce((s, f) => s + (f.size || 0), 0);
+  $('#fileCount').textContent = files.length
+    ? '共 ' + files.length + ' 个文件 · ' + fmtSize(total) : '暂无文件';
+  if (!files.length) {
+    listEl.innerHTML = '<li class="placeholder">还没有文件 —— 拖入或点击上方按钮添加</li>';
+    return;
+  }
+  listEl.innerHTML = files.map((f, i) => {
+    const cls = ['file'];
+    if (f.err) cls.push('bad');
+    if (!f.err && f.text !== null && f.text && !f.text.replace(/\s/g, '')) cls.push('dim');
+    return '<li class="' + cls.join(' ') + '" data-id="' + f.id + '" draggable="true">' +
+      '<span class="grip">⠿</span>' +
+      '<span class="idx">' + String(i + 1).padStart(2, '0') + '</span>' +
+      '<div class="finfo">' +
+        '<div class="fname" title="' + escapeHtml(f.name) + '">' + escapeHtml(f.name) + '</div>' +
+        '<div class="fmeta">' + metaLine(f) + '</div>' +
+      '</div>' +
+      '<div class="fops">' +
+        '<button data-act="up" title="上移" ' + (i === 0 ? 'disabled' : '') + '>↑</button>' +
+        '<button data-act="down" title="下移" ' + (i === files.length - 1 ? 'disabled' : '') + '>↓</button>' +
+        '<button data-act="del" title="移除" class="del">✕</button>' +
+      '</div></li>';
+  }).join('');
+}
+function clearResult() { lastResult = null; $('#result').hidden = true; }
+
+/* ================= 合并 ================= */
+function getVal(name) { return document.querySelector('input[name="' + name + '"]:checked').value; }
+function withBom(u8) {
+  const out = new Uint8Array(u8.length + 3);
+  out[0] = 0xEF; out[1] = 0xBB; out[2] = 0xBF;
+  out.set(u8, 3);
+  return out;
+}
+
+function doMerge() {
+  const usable = files.filter(f => f.buf);
+  if (usable.length < 2) { toast('请至少添加 2 个文件'); return; }
+  if (files.some(f => !f.buf && !f.err)) { toast('还有文件在读取中，请稍候', 'warn'); return; }
+  if (getVal('sep') === 'strict') return doStrictMerge();
+  return doSmartMerge(getVal('sep') === 'blank');
+}
+
+function doSmartMerge(blank) {
+  const parts = [], junctions = [];
+  let merged = 0, skipErr = 0, skipEmpty = 0, chars = 0, prev = null;
+  for (const f of files) {
+    if (f.err) { skipErr++; continue; }
+    if (f.text === null) continue;
+    // 1) 统一换行为 \n   2) 修剪首尾空行 —— 无缝的关键
+    const t = f.text.replace(/\r\n?/g, '\n')
+                    .replace(/^\n+/, '').replace(/\n+$/, '');
+    if (!t) { skipEmpty++; continue; }
+    if (parts.length) parts.push('\n' + (blank ? '\n' : ''));
+    parts.push(t);
+    chars += t.length;
+    const n = ++merged;
+    if (prev) {
+      const nlIdx = t.indexOf('\n');
+      junctions.push({
+        from: prev.n, to: n, title: prev.name + ' → ' + f.name,
+        tail: clip(prev.t.slice(prev.t.lastIndexOf('\n') + 1), 18),
+        head: clip(nlIdx < 0 ? t : t.slice(0, nlIdx), 18)
+      });
+    }
+    prev = { n, name: f.name, t };
+  }
+  let text = parts.join('');
+  if (getVal('eol') === 'crlf') text = text.replace(/\n/g, '\r\n');
+  const u8 = new TextEncoder().encode(text);
+  lastResult = {
+    mode: 'text', text,
+    bytes: getVal('oenc') === 'bom' ? withBom(u8) : u8,
+    stats: { merged, skipErr, skipEmpty, chars }, junctions
+  };
+  renderResult();
+  if (!merged) toast('没有可合并的内容', 'warn');
+  else toast('合并完成：' + merged + ' 个文件', 'ok');
+}
+
+function doStrictMerge() {
+  const encs = new Set(files.filter(f => f.enc).map(f => f.enc));
+  let total = 0, merged = 0;
+  for (const f of files) if (f.buf) { total += f.buf.byteLength; merged++; }
+  const out = new Uint8Array(total);
+  let off = 0;
+  for (const f of files) if (f.buf) { out.set(new Uint8Array(f.buf), off); off += f.buf.byteLength; }
+  lastResult = { mode: 'strict', bytes: out, stats: { merged, bytes: total }, junctions: [] };
+  renderResult();
+  if (encs.size > 1) toast('警告：检测到 ' + encs.size + ' 种编码，原样拼接可能乱码', 'warn');
+  else toast('合并完成：' + merged + ' 个文件', 'ok');
+}
+
+/* ================= 结果展示 / 下载 ================= */
+function renderResult() {
+  const r = lastResult; if (!r) return;
+  $('#result').hidden = false;
+  if (r.mode === 'strict') {
+    $('#resStats').innerHTML = '已按原始字节拼接 <b>' + r.stats.merged + '</b> 个文件 · 输出 <b>' +
+      fmtSize(r.stats.bytes) + '</b>';
+    $('#resWarn').innerHTML = '';
+    $('#jxCount').textContent = '';
+    $('#junctions').innerHTML = '<div class="dim">原样模式不处理内容，无法显示接缝</div>';
+    $('#previewBox').hidden = true;
+    $('#copyBtn').hidden = true;
+    return;
+  }
+  const s = r.stats;
+  $('#resStats').innerHTML = '合并 <b>' + s.merged + '</b> 个文件 · 共 <b>' +
+    s.chars.toLocaleString() + '</b> 字符 · 输出约 <b>' + fmtSize(r.bytes.length) + '</b>';
+  let warn = '';
+  if (s.skipErr) warn += '<div class="warnline">⚠ ' + s.skipErr +
+    ' 个文件被跳过（无法识别编码或读取失败，可在“读取编码”中手动指定后重试）</div>';
+  if (s.skipEmpty) warn += '<div class="warnline">· ' + s.skipEmpty + ' 个空文件被跳过</div>';
+  $('#resWarn').innerHTML = warn;
+  $('#jxCount').textContent = r.junctions.length ? '（' + r.junctions.length + ' 处）' : '（无）';
+  $('#junctions').innerHTML = r.junctions.length
+    ? r.junctions.map(j =>
+        '<div class="jx" title="' + escapeHtml(j.title) + '">' +
+        '<span class="pair">' + String(j.from).padStart(2, '0') + '→' + String(j.to).padStart(2, '0') + '</span>' +
+        '<span class="txt l">…' + escapeHtml(j.tail) + '</span>' +
+        '<span class="arrow">⟶</span>' +
+        '<span class="txt">' + escapeHtml(j.head) + '…</span></div>').join('')
+    : '<div class="dim">只有 1 个有效文件，没有接缝</div>';
+  $('#preview').textContent = r.text.slice(0, 1200) + (r.text.length > 1200 ? '\n…' : '');
+  $('#previewBox').hidden = false;
+  $('#copyBtn').hidden = false;
+}
+
+$('#mergeBtn').addEventListener('click', doMerge);
+
+$('#downloadBtn').addEventListener('click', () => {
+  if (!lastResult) doMerge();
+  if (!lastResult) return;
+  let name = ($('#outName').value || '合并结果.txt').trim();
+  if (!/\.txt$/i.test(name)) name += '.txt';
+  name = name.replace(/[\\/:*?"<>|]/g, '_');
+  const blob = new Blob([lastResult.bytes], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+  toast('已开始下载 ' + name, 'ok');
+});
+
+$('#copyBtn').addEventListener('click', async () => {
+  if (!lastResult || lastResult.mode !== 'text') return;
+  const t = lastResult.text;
+  try {
+    await navigator.clipboard.writeText(t);
+    toast('已复制全部内容到剪贴板', 'ok');
+  } catch (e) {
+    const ta = document.createElement('textarea');
+    ta.value = t; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch (_) {}
+    ta.remove();
+    toast(ok ? '已复制全部内容到剪贴板' : '复制失败，请改用下载', ok ? 'ok' : 'err');
+  }
+});
+
+/* ================= 列表操作：删除 / 上移下移 / 拖拽排序 ================= */
+$('#fileList').addEventListener('click', e => {
+  const btn = e.target.closest('button[data-act]');
+  if (!btn || btn.disabled) return;
+  const li = btn.closest('li.file'); if (!li) return;
+  const i = files.findIndex(f => f.id === +li.dataset.id);
+  if (i < 0) return;
+  const act = btn.dataset.act;
+  if (act === 'del') { seen.delete(files[i].key); files.splice(i, 1); }
+  else if (act === 'up' && i > 0) { [files[i - 1], files[i]] = [files[i], files[i - 1]]; }
+  else if (act === 'down' && i < files.length - 1) { [files[i], files[i + 1]] = [files[i], files[i + 1]]; }
+  else return;
+  render(); clearResult();
+});
+
+const listEl = $('#fileList');
+listEl.addEventListener('dragstart', e => {
+  const li = e.target.closest('li.file'); if (!li) return;
+  dragIdx = +li.dataset.id;
+  e.dataTransfer.effectAllowed = 'move';
+  try { e.dataTransfer.setData('text/plain', 'row'); } catch (_) {}
+  requestAnimationFrame(() => li.classList.add('dragging'));
+});
+listEl.addEventListener('dragover', e => {
+  if (dragIdx < 0) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  const dragging = listEl.querySelector('.dragging');
+  if (!dragging) return;
+  const after = [...listEl.querySelectorAll('li.file:not(.dragging)')].find(li => {
+    const r = li.getBoundingClientRect();
+    return e.clientY < r.top + r.height / 2;
+  });
+  if (after) listEl.insertBefore(dragging, after);
+  else listEl.appendChild(dragging);
+});
+listEl.addEventListener('drop', e => { if (dragIdx >= 0) { e.preventDefault(); e.stopPropagation(); } });
+listEl.addEventListener('dragend', () => {
+  if (dragIdx < 0) return;
+  dragIdx = -1;
+  const li = listEl.querySelector('.dragging');
+  if (li) li.classList.remove('dragging');
+  const order = [...listEl.querySelectorAll('li.file')].map(el => +el.dataset.id);
+  files.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
+  render(); clearResult();
+});
+
+/* ================= 工具栏 / 选择器 ================= */
+$('#sortNat').addEventListener('click', () => {
+  if (files.length < 2) return;
+  files.sort((a, b) => natCmp(a.name, b.name));
+  render(); clearResult();
+  toast('已按文件名自然排序', 'ok');
+});
+$('#clearAll').addEventListener('click', () => {
+  if (!files.length) return;
+  if (!confirm('确定清空文件列表？')) return;
+  files.length = 0; seen.clear(); render(); clearResult();
+});
+$('#encSel').addEventListener('change', () => {
+  if (!files.some(f => f.buf)) return;
+  files.forEach(f => { if (f.buf) decodeItem(f); });
+  render(); clearResult();
+});
+$('#pickFiles').addEventListener('click', () => $('#fileInput').click());
+$('#pickDir').addEventListener('click', () => $('#dirInput').click());
+$('#dropzone').addEventListener('click', e => {
+  if (e.target.closest('.linklike')) return;
+  $('#fileInput').click();
+});
+$('#fileInput').addEventListener('change', e => {
+  addFiles([...e.target.files]); e.target.value = '';
+});
+$('#dirInput').addEventListener('change', e => {
+  const fs = [...e.target.files].map(f => { f._relPath = f.webkitRelativePath || f.name; return f; });
+  addFiles(fs); e.target.value = '';
+});
+
+/* ================= 全页拖放（文件 / 文件夹） ================= */
+function hasFiles(e) {
+  const t = e.dataTransfer && e.dataTransfer.types;
+  if (!t) return false;
+  for (let i = 0; i < t.length; i++) if (t[i] === 'Files') return true;
+  return false;
+}
+document.addEventListener('dragenter', e => {
+  if (dragIdx >= 0 || !hasFiles(e)) return;
+  dragDepth++;
+  $('#overlay').classList.add('on');
+});
+document.addEventListener('dragleave', e => {
+  if (dragIdx >= 0 || !hasFiles(e)) return;
+  dragDepth--;
+  if (dragDepth <= 0) { dragDepth = 0; $('#overlay').classList.remove('on'); }
+});
+document.addEventListener('dragover', e => {
+  if (dragIdx >= 0 || !hasFiles(e)) return;
+  e.preventDefault();
+});
+document.addEventListener('drop', async e => {
+  if (dragIdx >= 0 || !hasFiles(e)) return;
+  e.preventDefault();
+  dragDepth = 0;
+  $('#overlay').classList.remove('on');
+  const items = e.dataTransfer.items ? Array.prototype.slice.call(e.dataTransfer.items) : [];
+  const entries = items
+    .map(it => (typeof it.webkitGetAsEntry === 'function') ? it.webkitGetAsEntry() : null)
+    .filter(Boolean);
+  const picked = [];
+  if (entries.length) {
+    for (const en of entries) await collectEntry(en, '', picked);
+  } else {
+    for (const f of e.dataTransfer.files) picked.push(f);
+  }
+  addFiles(picked);
+});
+
+/* ================= 其他 ================= */
+function syncFmtState() {
+  const strict = getVal('sep') === 'strict';
+  $('#fmtPanel').classList.toggle('dimmed', strict);
+}
+document.querySelectorAll('input[name="sep"]').forEach(r =>
+  r.addEventListener('change', syncFmtState));
+syncFmtState();
+
+window.addEventListener('beforeunload', e => {
+  if (files.length) { e.preventDefault(); e.returnValue = ''; }
+});
+
+render();
+</script>
+</body>
+</html>
